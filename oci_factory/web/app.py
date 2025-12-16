@@ -46,7 +46,7 @@ async def index(request: Request):
 async def api_status():
     return JSONResponse(content=get_current_state())
 
-# --- NOVAS ROTAS DE CONTROLE ---
+# --- ROTAS DE CONTROLE ---
 
 @app.post("/api/control/restart")
 async def restart_factory():

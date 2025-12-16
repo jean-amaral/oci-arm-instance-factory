@@ -12,12 +12,10 @@
         body { background-color: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', monospace; }
         .card { background-color: #161b22; border: 1px solid #30363d; margin-bottom: 20px; transition: all 0.3s; }
         
-        /* Status Colors */
         .status-created { border-left: 5px solid #2ea043 !important; }
         .status-running { border-left: 5px solid #2f81f7 !important; background-color: #1c2128; }
         .status-waiting { border-left: 5px solid #e3b341 !important; opacity: 0.8; }
         
-        /* O "Talento": Animação de Pulso para quem está rodando */
         @keyframes pulse-blue {
             0% { box-shadow: 0 0 0 0 rgba(47, 129, 247, 0.4); }
             70% { box-shadow: 0 0 0 10px rgba(47, 129, 247, 0); }
@@ -127,7 +125,7 @@
                     iconStatus = '<i class="bi bi-hdd-network"></i>';
                 } else if (info.status === 'running') {
                     statusClass = 'status-running';
-                    pulseClass = 'pulse-animation'; // Ativa o pulso
+                    pulseClass = 'pulse-animation'; 
                     badgeHtml = '<span class="badge bg-primary"><i class="bi bi-cpu"></i> TENTANDO...</span>';
                     iconStatus = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div>';
                 }
@@ -155,7 +153,6 @@
                 </div>`;
             });
             
-            // Atualiza apenas se o conteúdo mudou (para não resetar seleção de texto, etc)
             if (nodesContainer.innerHTML !== nodesHtml) {
                 nodesContainer.innerHTML = nodesHtml;
             }
@@ -174,7 +171,7 @@
     }
 
     updateDashboard();
-    setInterval(updateDashboard, 3000); // Refresh visual a cada 3s
+    setInterval(updateDashboard, 3000); 
 </script>
 
 </body>

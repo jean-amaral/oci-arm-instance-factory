@@ -43,8 +43,7 @@ class FactoryState:
                 self.status = status
             if last_message:
                 self.add_log(last_message)
-            
-            # Hora UTC com Z
+
             self.last_update = datetime.utcnow().isoformat() + "Z"
             self._save()
 

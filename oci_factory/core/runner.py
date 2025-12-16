@@ -46,7 +46,7 @@ class InstanceFactoryRunner:
             return []
 
     def start(self):
-        self.state.add_log("=== Factory Iniciada (Modo Multi-Nó) ===")
+        self.state.add_log("=== Factory Iniciada (Proteção Rate-Limit 5min) ===")
         self.state.update(status="running")
 
         while True:
@@ -64,12 +64,10 @@ class InstanceFactoryRunner:
 
             # 3. Processa pendentes
             for node_name in pending_nodes:
-                # Marca visualmente que estamos trabalhando NESTE nó agora
                 self.state.update_node(node_name, status="running", last_msg="Preparando...")
                 
                 created = False
                 for ad in self.availability_domains:
-                    # Atualiza mensagem para mostrar qual AD está sendo testado
                     self.state.update_node(node_name, status="running", last_msg=f"Testando {ad.name}...")
                     
                     try:
@@ -95,18 +93,30 @@ class InstanceFactoryRunner:
 
                     except Exception as e:
                         msg = str(e)
-                        if "Out of host capacity" in msg or "500" in msg:
-                            # Pequeno sleep para garantir que a UI pegue o status "Running"
-                            # e para não bombardear a API da Oracle
-                            time.sleep(1.5) 
+                        
+                        # === LÓGICA DE PROTEÇÃO ===
+                        if "429" in msg or "TooManyRequests" in msg:
+                            # Se der Rate Limit, para TUDO por 5 minutos
+                            self.state.add_log(f"🛑 Rate Limit (429). Pausando 5 min para esfriar...")
+                            self.state.update_node(node_name, status="waiting", last_msg="Cooldown 5min (Rate Limit)")
+                            
+                            time.sleep(300)
+                            
+                            break 
+                        
+                        elif "Out of host capacity" in msg or "500" in msg:
+                            # Erro de capacidade: espera 1.5s e tenta o próximo
+                            time.sleep(1.5)
+                        
                         else:
+                            # Erros genéricos
                             self.state.add_log(f"❌ Erro {node_name}: {msg}")
-                            time.sleep(1)
+                            time.sleep(5)
 
                 if not created:
-                    # Só agora volta para amarelo (waiting)
-                    self.state.update_node(node_name, status="waiting", last_msg="Sem capacidade (Aguardando)")
 
-            # Fim do ciclo
+                    self.state.update_node(node_name, status="waiting", last_msg="Aguardando...")
+
+            # Fim do ciclo normal
             self.state.add_log(f"Ciclo concluído. Aguardando {self.poll_interval}s...")
             time.sleep(self.poll_interval)

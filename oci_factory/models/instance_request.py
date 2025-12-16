@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-
 @dataclass
 class InstanceRequest:
     compartment_id: str
