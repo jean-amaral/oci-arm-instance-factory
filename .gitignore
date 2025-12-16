@@ -1,11 +1,10 @@
 # ========================
-# Python
+# Python & Ambiente Virtual
 # ========================
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-*.so
 .Python
 build/
 dist/
@@ -14,48 +13,46 @@ dist/
 .pytest_cache/
 .coverage
 htmlcov/
-.mypy_cache/
+venv/
+env/
 
 # ========================
-# Virtualenv
+# Segredos e Configurações (.env)
 # ========================
-venv/
 .env
 .env.*
+.oci/
 
 # ========================
-# OCI / Credenciais
+# Chaves e Certificados (CRÍTICO)
 # ========================
-.oci/
-oci_api_key.pem
 *.pem
 *.key
+*.pub
+# Proteção extra para nomes comuns de chaves
+id_rsa
+id_rsa.pub
+chave-oci
+chave-oci.pub
+oci_api_key.pem
 
 # ========================
-# Estado e runtime
+# Estado e Logs da Aplicação
 # ========================
 state.json
 *.log
+*.sqlite
+*.db
 
 # ========================
-# FastAPI / Uvicorn
-# ========================
-*.pid
-*.sock
-
-# ========================
-# VS Code
+# IDEs e Sistema Operacional
 # ========================
 .vscode/
-.history/
-
-# ========================
-# Sistema
-# ========================
+.idea/
 .DS_Store
 Thumbs.db
 
 # ========================
-# Systemd (não versionar serviços locais)
+# Systemd (Serviços locais)
 # ========================
 *.service
