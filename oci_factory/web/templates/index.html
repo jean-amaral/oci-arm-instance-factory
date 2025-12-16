@@ -12,10 +12,22 @@
         body { background-color: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', monospace; }
         .card { background-color: #161b22; border: 1px solid #30363d; margin-bottom: 20px; transition: all 0.3s; }
         
+        /* Status Colors */
         .status-created { border-left: 5px solid #2ea043 !important; }
-        .status-running { border-left: 5px solid #2f81f7 !important; }
-        .status-waiting { border-left: 5px solid #e3b341 !important; }
+        .status-running { border-left: 5px solid #2f81f7 !important; background-color: #1c2128; }
+        .status-waiting { border-left: 5px solid #e3b341 !important; opacity: 0.8; }
         
+        /* O "Talento": Animação de Pulso para quem está rodando */
+        @keyframes pulse-blue {
+            0% { box-shadow: 0 0 0 0 rgba(47, 129, 247, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(47, 129, 247, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(47, 129, 247, 0); }
+        }
+        .pulse-animation {
+            animation: pulse-blue 2s infinite;
+            border-color: #2f81f7;
+        }
+
         .log-terminal {
             background-color: #000;
             border: 1px solid #30363d;
@@ -41,17 +53,17 @@
         <div>
             <h3 class="fw-bold m-0"><i class="bi bi-grid-fill"></i> OCI Cluster Factory</h3>
             <div class="d-flex align-items-center gap-2 mt-1">
-                <span class="badge bg-secondary">v1.01 Control</span>
+                <span class="badge bg-secondary">v2.2 Pro</span>
                 <span id="system-status" class="badge bg-success">ONLINE</span>
             </div>
         </div>
         
         <div class="d-flex gap-2">
-            <button onclick="controlFactory('restart')" class="btn btn-outline-warning btn-control" title="Reiniciar Serviço">
-                <i class="bi bi-arrow-clockwise"></i> <span class="d-none d-md-inline">Reiniciar</span>
+            <button onclick="controlFactory('restart')" class="btn btn-outline-warning btn-control" title="Reiniciar">
+                <i class="bi bi-arrow-clockwise"></i>
             </button>
-            <button onclick="controlFactory('stop')" class="btn btn-outline-danger btn-control" title="Parar Serviço">
-                <i class="bi bi-stop-circle"></i> <span class="d-none d-md-inline">Parar</span>
+            <button onclick="controlFactory('stop')" class="btn btn-outline-danger btn-control" title="Parar">
+                <i class="bi bi-stop-circle"></i>
             </button>
         </div>
     </div>
@@ -59,13 +71,13 @@
     <div class="row" id="nodes-container">
         <div class="col-12 text-center py-5">
             <div class="spinner-border text-primary" role="status"></div>
-            <p>Conectando ao Factory...</p>
+            <p>Carregando nós...</p>
         </div>
     </div>
 
     <div class="mt-4">
         <div class="d-flex justify-content-between align-items-end mb-2">
-            <h5 class="m-0"><i class="bi bi-terminal"></i> Logs do Sistema</h5>
+            <h5 class="m-0"><i class="bi bi-terminal"></i> Logs em Tempo Real</h5>
             <div id="last-update-display" class="text-muted small">...</div>
         </div>
         <div class="log-terminal" id="log-terminal"></div>
@@ -74,110 +86,95 @@
 </div>
 
 <script>
-    // Função de Controle (Reiniciar/Parar)
     async function controlFactory(action) {
-        const actionName = action === 'restart' ? 'reiniciar' : 'parar';
-        if (!confirm(`Tem certeza que deseja ${actionName} o Factory?`)) return;
-
+        if (!confirm(`Deseja ${action} o serviço?`)) return;
         try {
-            const btn = event.target.closest('button');
-            const originalContent = btn.innerHTML;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-            btn.disabled = true;
-
-            const response = await fetch(`/api/control/${action}`, { method: 'POST' });
-            
-            if (response.ok) {
-                alert(`Comando de ${actionName} enviado com sucesso!`);
-                // Se parou, atualiza visualmente
-                if (action === 'stop') {
-                    document.getElementById('system-status').className = 'badge bg-danger';
-                    document.getElementById('system-status').innerText = 'OFFLINE (Comando)';
-                }
-            } else {
-                alert('Erro ao executar comando. Verifique logs.');
+            await fetch(`/api/control/${action}`, { method: 'POST' });
+            alert(`Comando ${action} enviado.`);
+            if(action === 'stop') {
+                document.getElementById('system-status').className = 'badge bg-danger';
+                document.getElementById('system-status').innerText = 'OFFLINE';
             }
-
-            // Restaura botão após 2s
-            setTimeout(() => {
-                btn.innerHTML = originalContent;
-                btn.disabled = false;
-            }, 2000);
-
-        } catch (error) {
-            console.error(error);
-            alert('Erro de conexão com o servidor.');
-        }
+        } catch (e) { alert('Erro ao comunicar com o servidor.'); }
     }
 
-    // Lógica de Atualização (Mesma de antes)
     async function updateDashboard() {
         try {
             const response = await fetch('/api/status');
             const data = await response.json();
 
+            // Atualiza Data Local
             if (data.last_update) {
+                // O "Z" que adicionamos no state.py permite que isso funcione corretamente
                 const dateObj = new Date(data.last_update);
-                document.getElementById('last-update-display').innerText = 'Atualizado: ' + dateObj.toLocaleString('pt-BR');
+                document.getElementById('last-update-display').innerText = dateObj.toLocaleString('pt-BR');
             }
 
             const nodesContainer = document.getElementById('nodes-container');
             let nodesHtml = '';
             const sortedKeys = Object.keys(data.nodes || {}).sort();
 
-            if (sortedKeys.length === 0) {
-                nodesContainer.innerHTML = '<div class="col-12 text-center text-muted py-4">Nenhum nó detectado ou serviço parado.</div>';
-            } else {
-                sortedKeys.forEach(name => {
-                    const info = data.nodes[name];
-                    let statusClass = 'status-waiting';
-                    let badgeHtml = '<span class="badge bg-warning text-dark"><i class="bi bi-hourglass"></i> FILA</span>';
-                    
-                    if (info.status === 'created') {
-                        statusClass = 'status-created';
-                        badgeHtml = '<span class="badge bg-success"><i class="bi bi-check-lg"></i> CRIADO</span>';
-                    } else if (info.status === 'running') {
-                        statusClass = 'status-running';
-                        badgeHtml = '<span class="badge bg-primary"><i class="bi bi-cpu"></i> TENTANDO</span>';
-                    }
+            sortedKeys.forEach(name => {
+                const info = data.nodes[name];
+                let statusClass = 'status-waiting';
+                let badgeHtml = '<span class="badge bg-warning text-dark"><i class="bi bi-hourglass"></i> FILA</span>';
+                let pulseClass = ''; // Classe para animação
+                let iconStatus = '<i class="bi bi-server"></i>';
 
-                    nodesHtml += `
-                    <div class="col-md-6 fade-in">
-                        <div class="card shadow-sm h-100 ${statusClass}">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between mb-2">
-                                    <h5 class="card-title fw-bold">${name}</h5>
-                                    ${badgeHtml}
-                                </div>
-                                <p class="card-text text-muted mb-1 small">${info.desc || 'Configurando...'}</p>
-                                <div class="p-2 rounded bg-dark border border-secondary mt-3">
-                                    <small class="text-secondary" style="font-size: 0.75rem;">Status:</small><br>
-                                    <span class="text-light fw-bold">${info.last_msg || '...'}</span>
-                                </div>
+                if (info.status === 'created') {
+                    statusClass = 'status-created';
+                    badgeHtml = '<span class="badge bg-success"><i class="bi bi-check-lg"></i> SUCESSO</span>';
+                    iconStatus = '<i class="bi bi-hdd-network"></i>';
+                } else if (info.status === 'running') {
+                    statusClass = 'status-running';
+                    pulseClass = 'pulse-animation'; // Ativa o pulso
+                    badgeHtml = '<span class="badge bg-primary"><i class="bi bi-cpu"></i> TENTANDO...</span>';
+                    iconStatus = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div>';
+                }
+
+                nodesHtml += `
+                <div class="col-md-6 mb-3">
+                    <div class="card shadow-sm h-100 ${statusClass} ${pulseClass}">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="card-title fw-bold m-0">${iconStatus} ${name}</h5>
+                                ${badgeHtml}
+                            </div>
+                            
+                            <div class="d-flex justify-content-between text-muted small mb-2">
+                                <span>Shape: ${info.desc || 'ARM A1'}</span>
+                                <span>Status API</span>
+                            </div>
+
+                            <div class="p-2 rounded bg-dark border border-secondary d-flex align-items-center">
+                                <i class="bi bi-terminal-fill me-2 text-secondary"></i>
+                                <span class="text-light fw-bold text-truncate w-100">${info.last_msg || '...'}</span>
                             </div>
                         </div>
-                    </div>`;
-                });
+                    </div>
+                </div>`;
+            });
+            
+            // Atualiza apenas se o conteúdo mudou (para não resetar seleção de texto, etc)
+            if (nodesContainer.innerHTML !== nodesHtml) {
                 nodesContainer.innerHTML = nodesHtml;
             }
 
+            // Logs
             const logContainer = document.getElementById('log-terminal');
             let logsHtml = '';
             (data.logs || []).forEach(log => {
                 logsHtml += `<div class="log-entry">${log}</div>`;
             });
-            // Verifica se o usuário selecionou texto, se não, atualiza
             if (!window.getSelection().toString()) {
                 logContainer.innerHTML = logsHtml;
             }
 
-        } catch (error) {
-            console.error('Erro no update:', error);
-        }
+        } catch (error) { console.error(error); }
     }
 
     updateDashboard();
-    setInterval(updateDashboard, 5000);
+    setInterval(updateDashboard, 3000); // Refresh visual a cada 3s
 </script>
 
 </body>

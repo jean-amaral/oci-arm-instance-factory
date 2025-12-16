@@ -21,13 +21,11 @@ class InstanceFactoryRunner:
         self.identity = identity_client
         self.compute = compute_client
         
-        # Dados da infra
         self.compartment_id = compartment_id
         self.subnet_id = subnet_id
         self.image_id = image_id
         self.ssh_key_path = ssh_public_key_path
         
-        # Specs (Default Boot Volume ~47GB/50GB é padrão da imagem)
         self.shape = shape
         self.ocpus = ocpus
         self.memory = memory
@@ -36,8 +34,6 @@ class InstanceFactoryRunner:
 
         self.state = FactoryState()
         self.availability_domains = self._load_ads()
-        
-        # Define os alvos (Nodes) que queremos criar
         self.targets = ["Instancia-1", "Instancia-2"]
 
     def _load_ads(self):
@@ -51,42 +47,30 @@ class InstanceFactoryRunner:
 
     def start(self):
         self.state.add_log("=== Factory Iniciada (Modo Multi-Nó) ===")
-        # Garante que o status global comece como Rodando
         self.state.update(status="running")
 
         while True:
-            active_attempts = 0
-            
-            # 1. Verifica quais nós ainda precisam ser criados
+            # 1. Verifica pendências
             pending_nodes = []
             for node_name in self.targets:
-                # Se status não é 'created', adiciona na lista de pendentes
                 if self.state.nodes[node_name]["status"] != "created":
                     pending_nodes.append(node_name)
 
-            # 2. Se não há pendentes, ACABOU!
+            # 2. Se acabou, sucesso
             if not pending_nodes:
-                # Trava de Segurança: Missão Cumprida
                 self.state.add_log("🏆 MISSÃO CUMPRIDA: Todas as instâncias criadas!")
-                self.state.update(
-                    status="success", 
-                    last_message="Factory Finalizada com Sucesso"
-                )
-                
-                # Entra em loop de hibernação longa para não matar o processo
-                # (Isso mantém o dashboard acessível mostrando 'Sucesso')
-                while True:
-                    time.sleep(3600) # Dorme por 1 hora repetidamente
+                self.state.update(status="success", last_message="Factory Finalizada")
+                while True: time.sleep(3600)
 
-            # 3. Se há pendentes, continua o trabalho
-            active_attempts = len(pending_nodes)
-            
+            # 3. Processa pendentes
             for node_name in pending_nodes:
-                self.state.update_node(node_name, status="running", last_msg="Iniciando ciclo...")
+                # Marca visualmente que estamos trabalhando NESTE nó agora
+                self.state.update_node(node_name, status="running", last_msg="Preparando...")
                 
                 created = False
                 for ad in self.availability_domains:
-                    self.state.update_node(node_name, last_msg=f"Tentando no {ad.name}")
+                    # Atualiza mensagem para mostrar qual AD está sendo testado
+                    self.state.update_node(node_name, status="running", last_msg=f"Testando {ad.name}...")
                     
                     try:
                         request = InstanceRequest(
@@ -100,26 +84,29 @@ class InstanceFactoryRunner:
                             memory_gbs=self.memory
                         )
                         
-                        self.state.add_log(f"[{node_name}] Request -> {ad.name}...")
+                        self.state.add_log(f"[{node_name}] Request -> {ad.name}")
                         self.compute.launch_instance(request)
                         
-                        # Sucesso neste nó
-                        self.state.add_log(f"✅ SUCESSO: {node_name} criada no {ad.name}!")
+                        # Sucesso
+                        self.state.add_log(f"✅ SUCESSO: {node_name} criada!")
                         self.state.update_node(node_name, status="created", last_msg=f"Criada no {ad.name}")
                         created = True
-                        break # Sai do loop de ADs para este nó
+                        break 
 
                     except Exception as e:
                         msg = str(e)
                         if "Out of host capacity" in msg or "500" in msg:
-                            # Log discreto para erro comum
-                            pass 
+                            # Pequeno sleep para garantir que a UI pegue o status "Running"
+                            # e para não bombardear a API da Oracle
+                            time.sleep(1.5) 
                         else:
                             self.state.add_log(f"❌ Erro {node_name}: {msg}")
+                            time.sleep(1)
 
                 if not created:
+                    # Só agora volta para amarelo (waiting)
                     self.state.update_node(node_name, status="waiting", last_msg="Sem capacidade (Aguardando)")
 
-            # Fim do ciclo de tentativas
-            self.state.add_log(f"Ciclo finalizado. {active_attempts} nós pendentes. Aguardando {self.poll_interval}s...")
+            # Fim do ciclo
+            self.state.add_log(f"Ciclo concluído. Aguardando {self.poll_interval}s...")
             time.sleep(self.poll_interval)
