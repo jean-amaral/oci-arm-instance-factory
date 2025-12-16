@@ -2,57 +2,66 @@ import json
 import threading
 from datetime import datetime
 from pathlib import Path
+from collections import deque
 
 STATE_FILE = Path("/home/ubuntu/oci-factory/state.json")
 _LOCK = threading.Lock()
 
-
 class FactoryState:
     def __init__(self):
-        self.status = "Parado"
-        self.attempt = 0
-        self.availability_domain = None
-        self.last_message = None
-        self.last_update = None
-        self._save()
+        # Estado inicial padrão para 2 nós
+        self.nodes = {
+            "Instancia-1": {"status": "waiting", "desc": "1 OCPU / 6GB", "last_msg": "Aguardando..."},
+            "Instancia-2": {"status": "waiting", "desc": "1 OCPU / 6GB", "last_msg": "Aguardando..."}
+        }
+        self.logs = [] # Lista simples para JSON
+        self.last_update = datetime.utcnow().isoformat()
+        
+        # Tenta carregar estado anterior para não perder progresso
+        loaded = self.load()
+        if loaded:
+            self.nodes = loaded.get("nodes", self.nodes)
+            self.logs = loaded.get("logs", [])
 
-    def update(
-        self,
-        status=None,
-        attempt=None,
-        availability_domain=None,
-        last_message=None,
-    ):
+    def add_log(self, message):
+        """Adiciona log com timestamp e mantém apenas os últimos 50"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        log_entry = f"[{timestamp}] {message}"
+        
         with _LOCK:
-            if status is not None:
-                self.status = status
-            if attempt is not None:
-                self.attempt = attempt
-            if availability_domain is not None:
-                self.availability_domain = availability_domain
-            if last_message is not None:
-                self.last_message = last_message
+            self.logs.insert(0, log_entry) # Adiciona no topo
+            if len(self.logs) > 50:
+                self.logs.pop() # Remove antigo
+            self._save()
 
+    def update_node(self, node_name, status=None, last_msg=None):
+        with _LOCK:
+            if node_name in self.nodes:
+                if status:
+                    self.nodes[node_name]["status"] = status
+                if last_msg:
+                    self.nodes[node_name]["last_msg"] = last_msg
+            
             self.last_update = datetime.utcnow().isoformat()
             self._save()
 
     def _save(self):
-        STATE_FILE.write_text(
-            json.dumps(
-                {
-                    "status": self.status,
-                    "attempt": self.attempt,
-                    "availability_domain": self.availability_domain,
-                    "last_message": self.last_message,
-                    "last_update": self.last_update,
-                },
-                indent=2,
-                ensure_ascii=False,
-            )
-        )
+        # Grava no disco
+        try:
+            data = {
+                "nodes": self.nodes,
+                "logs": self.logs,
+                "last_update": self.last_update
+            }
+            STATE_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+        except Exception:
+            pass # Evita crash se disco estiver ocupado
 
     @staticmethod
     def load():
         if not STATE_FILE.exists():
             return None
-        return json.loads(STATE_FILE.read_text())
+        try:
+            return json.loads(STATE_FILE.read_text())
+        except:
+            return None

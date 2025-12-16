@@ -1,40 +1,41 @@
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse, JSONResponse
 from oci_factory.core.state import FactoryState
 import os
 
 app = FastAPI()
 
+templates = Jinja2Templates(directory="oci_factory/web/templates")
 STATE_FILE = "/home/ubuntu/oci-factory/state.json"
 
+def get_current_state():
+    """Função auxiliar para ler o estado de forma segura"""
+    default_state = {
+        "nodes": {},
+        "logs": [],
+        "last_update": "",
+        "status": "Iniciando..."
+    }
+    
+    if os.path.exists(STATE_FILE):
+        try:
+            loaded = FactoryState.load()
+            if loaded:
+                return loaded
+        except:
+            pass
+    return default_state
 
 @app.get("/", response_class=HTMLResponse)
-def index():
-    if not os.path.exists(STATE_FILE):
-        return """
-        <html>
-            <body>
-                <h2>Factory não inicializada</h2>
-                <p>Arquivo de estado não encontrado.</p>
-            </body>
-        </html>
-        """
+async def index(request: Request):
+    # Renderiza a carga inicial (Server Side Rendering)
+    return templates.TemplateResponse("index.html", {
+        "request": request, 
+        "state": get_current_state()
+    })
 
-    state = FactoryState.load()
-
-    return f"""
-    <html>
-        <head>
-            <title>OCI Instance Factory</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-        </head>
-        <body>
-            <h1>OCI Instance Factory</h1>
-            <p><b>Status:</b> {state.get('status')}</p>
-            <p><b>Tentativa atual:</b> {state.get('attempt')}</p>
-            <p><b>Availability Domain:</b> {state.get('availability_domain')}</p>
-            <p><b>Última mensagem:</b> {state.get('last_message')}</p>
-            <p><b>Última atualização:</b> {state.get('last_update')}</p>
-        </body>
-    </html>
-    """
+@app.get("/api/status")
+async def api_status():
+    # Rota que o JavaScript vai chamar a cada X segundos
+    return JSONResponse(content=get_current_state())

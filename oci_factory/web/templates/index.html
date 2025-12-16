@@ -1,23 +1,155 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
-    <title>OCI Instance Factory</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OCI Factory Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+
+    <style>
+        body { background-color: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', monospace; }
+        .card { background-color: #161b22; border: 1px solid #30363d; margin-bottom: 20px; transition: all 0.3s; }
+        
+        /* Cores de Status */
+        .status-created { border-left: 5px solid #2ea043 !important; }
+        .status-running { border-left: 5px solid #2f81f7 !important; }
+        .status-waiting { border-left: 5px solid #e3b341 !important; }
+        
+        .log-terminal {
+            background-color: #000;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 15px;
+            height: 350px; /* Altura fixa */
+            overflow-y: auto; /* Scroll automático */
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.85em;
+            color: #79c0ff;
+            display: flex;
+            flex-direction: column;
+        }
+        .log-entry { border-bottom: 1px solid #21262d; padding: 2px 0; }
+        .log-time { color: #8b949e; margin-right: 10px; user-select: none; }
+    </style>
 </head>
 <body>
-    <h1>OCI Instance Factory</h1>
 
-    <p><strong>Status:</strong>
-        {% if state.running %}
-            Rodando
-        {% else %}
-            Parado
-        {% endif %}
-    </p>
+<div class="container py-4">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold m-0"><i class="bi bi-grid-fill"></i> OCI Cluster Factory</h3>
+            <span class="badge bg-secondary mt-1">v2.0 Live Dashboard</span>
+        </div>
+        <div class="text-end">
+            <div class="text-muted small">Última Atualização</div>
+            <div id="last-update-display" class="fw-bold text-info">Carregando...</div>
+        </div>
+    </div>
 
-    <p><strong>Tentativa atual:</strong> {{ state.current_attempt }}</p>
-    <p><strong>Availability Domain:</strong> {{ state.current_ad }}</p>
-    <p><strong>Última mensagem:</strong> {{ state.last_message }}</p>
-    <p><strong>Última atualização:</strong> {{ state.last_update }}</p>
+    <div class="row" id="nodes-container">
+        <div class="col-12 text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p>Conectando ao Factory...</p>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <div class="d-flex justify-content-between align-items-end mb-2">
+            <h5 class="m-0"><i class="bi bi-terminal"></i> Logs do Sistema</h5>
+            <small class="text-muted">Mostrando últimos 50 eventos</small>
+        </div>
+        <div class="log-terminal" id="log-terminal">
+            </div>
+    </div>
+
+</div>
+
+<script>
+    async function updateDashboard() {
+        try {
+            const response = await fetch('/api/status');
+            const data = await response.json();
+
+            // 1. Atualizar Data (Formatada PT-BR)
+            if (data.last_update) {
+                const dateObj = new Date(data.last_update);
+                // Ajuste manual de fuso se necessário, mas toLocaleString geralmente pega o do navegador
+                document.getElementById('last-update-display').innerText = dateObj.toLocaleString('pt-BR');
+            }
+
+            // 2. Atualizar Cards dos Nós
+            const nodesContainer = document.getElementById('nodes-container');
+            let nodesHtml = '';
+
+            // Ordena as chaves para garantir que Instancia-1 venha antes de Instancia-2
+            const sortedKeys = Object.keys(data.nodes).sort();
+
+            sortedKeys.forEach(name => {
+                const info = data.nodes[name];
+                
+                // Define estilos baseados no status
+                let statusClass = 'status-waiting';
+                let badgeHtml = '<span class="badge bg-warning text-dark"><i class="bi bi-hourglass"></i> FILA</span>';
+                
+                if (info.status === 'created') {
+                    statusClass = 'status-created';
+                    badgeHtml = '<span class="badge bg-success"><i class="bi bi-check-lg"></i> CRIADO</span>';
+                } else if (info.status === 'running') {
+                    statusClass = 'status-running';
+                    badgeHtml = '<span class="badge bg-primary"><i class="bi bi-cpu"></i> TENTANDO</span>';
+                }
+
+                nodesHtml += `
+                <div class="col-md-6 fade-in">
+                    <div class="card shadow-sm h-100 ${statusClass}">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between mb-2">
+                                <h5 class="card-title fw-bold">${name}</h5>
+                                ${badgeHtml}
+                            </div>
+                            <p class="card-text text-muted mb-1 small">${info.desc || 'Configurando...'}</p>
+                            <div class="p-2 rounded bg-dark border border-secondary mt-3">
+                                <small class="text-secondary" style="font-size: 0.75rem;">Último status:</small><br>
+                                <span class="text-light fw-bold">${info.last_msg || '...'}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            });
+            
+            // Só atualiza o DOM se houve mudança para evitar flicker, 
+            // mas simplificando: substituir o HTML interno é seguro aqui.
+            nodesContainer.innerHTML = nodesHtml;
+
+            // 3. Atualizar Logs
+            const logContainer = document.getElementById('log-terminal');
+            let logsHtml = '';
+            
+            // Logs vêm do mais novo pro mais antigo no Python, 
+            // no terminal queremos o mais novo no topo ou fundo? 
+            // Geralmente logs de terminal: novos embaixo. Vamos inverter a lista do Python se necessário.
+            // Mas sua lista Python já insere no [0], então [0] é o mais novo.
+            
+            data.logs.forEach(log => {
+                // Separa timestamp da mensagem se possível, ou exibe direto
+                logsHtml += `<div class="log-entry">${log}</div>`;
+            });
+            logContainer.innerHTML = logsHtml;
+
+        } catch (error) {
+            console.error('Erro ao buscar status:', error);
+            // Opcional: mostrar erro na tela
+        }
+    }
+
+    // Atualiza assim que carrega
+    updateDashboard();
+
+    // Atualiza a cada 5 segundos (5000ms)
+    setInterval(updateDashboard, 5000);
+</script>
+
 </body>
 </html>
