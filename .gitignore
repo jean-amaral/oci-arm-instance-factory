@@ -1,0 +1,61 @@
+# ========================
+# Python
+# ========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# ========================
+# Virtualenv
+# ========================
+venv/
+.env
+.env.*
+
+# ========================
+# OCI / Credenciais
+# ========================
+.oci/
+oci_api_key.pem
+*.pem
+*.key
+
+# ========================
+# Estado e runtime
+# ========================
+state.json
+*.log
+
+# ========================
+# FastAPI / Uvicorn
+# ========================
+*.pid
+*.sock
+
+# ========================
+# VS Code
+# ========================
+.vscode/
+.history/
+
+# ========================
+# Sistema
+# ========================
+.DS_Store
+Thumbs.db
+
+# ========================
+# Systemd (não versionar serviços locais)
+# ========================
+*.service

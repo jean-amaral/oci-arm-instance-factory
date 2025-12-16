@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>OCI Instance Factory</title>
+</head>
+<body>
+    <h1>OCI Instance Factory</h1>
+
+    <p><strong>Status:</strong>
+        {% if state.running %}
+            Rodando
+        {% else %}
+            Parado
+        {% endif %}
+    </p>
+
+    <p><strong>Tentativa atual:</strong> {{ state.current_attempt }}</p>
+    <p><strong>Availability Domain:</strong> {{ state.current_ad }}</p>
+    <p><strong>Última mensagem:</strong> {{ state.last_message }}</p>
+    <p><strong>Última atualização:</strong> {{ state.last_update }}</p>
+</body>
+</html>
