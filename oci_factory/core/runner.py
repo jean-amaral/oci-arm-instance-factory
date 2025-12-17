@@ -46,28 +46,34 @@ class InstanceFactoryRunner:
             return []
 
     def start(self):
-        self.state.add_log("=== Factory Iniciada (Proteção Rate-Limit 5min) ===")
+        self.state.add_log("=== Factory Iniciada (Modo Sequencial + Delay ADs) ===")
         self.state.update(status="running")
 
         while True:
-            # 1. Verifica pendências
-            pending_nodes = []
-            for node_name in self.targets:
-                if self.state.nodes[node_name]["status"] != "created":
-                    pending_nodes.append(node_name)
-
-            # 2. Se acabou, sucesso
-            if not pending_nodes:
+            current_target = None
+            
+            # Lógica Sequencial Estrita (Foco na 1, depois na 2)
+            if self.state.nodes["Instancia-1"]["status"] != "created":
+                current_target = "Instancia-1"
+                if self.state.nodes["Instancia-2"]["status"] != "created":
+                    self.state.update_node("Instancia-2", status="waiting", last_msg="Aguardando Instancia-1...")
+            
+            elif self.state.nodes["Instancia-2"]["status"] != "created":
+                current_target = "Instancia-2"
+            
+            else:
                 self.state.add_log("🏆 MISSÃO CUMPRIDA: Todas as instâncias criadas!")
                 self.state.update(status="success", last_message="Factory Finalizada")
                 while True: time.sleep(3600)
 
-            # 3. Processa pendentes
-            for node_name in pending_nodes:
-                self.state.update_node(node_name, status="running", last_msg="Preparando...")
+            if current_target:
+                node_name = current_target
+                self.state.update_node(node_name, status="running", last_msg="Iniciando ciclo...")
                 
                 created = False
-                for ad in self.availability_domains:
+                
+                # Loop pelos ADs (com Delay Tático entre eles)
+                for i, ad in enumerate(self.availability_domains):
                     self.state.update_node(node_name, status="running", last_msg=f"Testando {ad.name}...")
                     
                     try:
@@ -85,7 +91,6 @@ class InstanceFactoryRunner:
                         self.state.add_log(f"[{node_name}] Request -> {ad.name}")
                         self.compute.launch_instance(request)
                         
-                        # Sucesso
                         self.state.add_log(f"✅ SUCESSO: {node_name} criada!")
                         self.state.update_node(node_name, status="created", last_msg=f"Criada no {ad.name}")
                         created = True
@@ -94,29 +99,29 @@ class InstanceFactoryRunner:
                     except Exception as e:
                         msg = str(e)
                         
-                        # === LÓGICA DE PROTEÇÃO ===
+                        # Tratamento Crítico de Rate Limit (429)
                         if "429" in msg or "TooManyRequests" in msg:
-                            # Se der Rate Limit, para TUDO por 5 minutos
-                            self.state.add_log(f"🛑 Rate Limit (429). Pausando 5 min para esfriar...")
+                            self.state.add_log(f"🛑 Rate Limit (429). Pausando 5 min...")
                             self.state.update_node(node_name, status="waiting", last_msg="Cooldown 5min (Rate Limit)")
-                            
-                            time.sleep(300)
-                            
+                            time.sleep(300) 
                             break 
                         
                         elif "Out of host capacity" in msg or "500" in msg:
-                            # Erro de capacidade: espera 1.5s e tenta o próximo
-                            time.sleep(1.5)
+                            # Falha normal de capacidade. Não fazemos sleep aqui, 
+                            # pois o sleep maior virá no final do bloco do AD.
+                            pass
                         
                         else:
-                            # Erros genéricos
                             self.state.add_log(f"❌ Erro {node_name}: {msg}")
-                            time.sleep(5)
+                    
+                    # === DELAY TÁTICO ENTRE ADs ===
+                    # Se não foi criada e não é o último AD da lista, espera um pouco antes de tentar o próximo.
+                    if not created and i < len(self.availability_domains) - 1:
+                        self.state.add_log(f"⏳ Aguardando 10s para tentar próximo AD...")
+                        time.sleep(10) # <--- O SEGREDO ESTÁ AQUI
 
                 if not created:
+                    self.state.update_node(node_name, status="waiting", last_msg="Sem capacidade (Aguardando)")
 
-                    self.state.update_node(node_name, status="waiting", last_msg="Aguardando...")
-
-            # Fim do ciclo normal
             self.state.add_log(f"Ciclo concluído. Aguardando {self.poll_interval}s...")
             time.sleep(self.poll_interval)
